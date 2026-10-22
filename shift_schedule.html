@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트 간호사 근무 스케줄러 (Nurse Duty Manager)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Font Awesome for additional icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter & Noto Sans KR -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Noto Sans KR', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Custom scrollbar for schedule table */
+        .custom-scrollbar::-webkit-scrollbar {
+            height: 8px;
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            .print-only {
+                display: block !important;
+            }
+            body {
+                background: white;
+                color: black;
+            }
+            .schedule-container {
+                overflow: visible !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
+
+    <!-- Top Navigation Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-sky-600 text-white p-2 rounded-xl flex items-center justify-center shadow-md shadow-sky-200">
+                        <i data-lucide="activity" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-slate-800 leading-tight">스마트 간호 근무 스케줄러</h1>
+                        <p class="text-xs text-slate-500 hidden sm:block">GitHub Pages & Firebase Realtime Shift Manager</p>
+                    </div>
+                </div>
+
+                <!-- Right Header Actions -->
+                <div class="flex items-center space-x-3">
+                    <!-- Data Sync Status Badge -->
+                    <div id="syncStatusBadge" class="hidden sm:flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                        <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                        <span id="syncStatusText">로컬 모드 (Local)</span>
+                    </div>
+
+                    <!-- Firebase & Github Guide Button -->
+                    <button onclick="openModal('firebaseModal')" class="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white transition shadow-sm">
+                        <i data-lucide="cloud-cog" class="w-4 h-4"></i>
+                        <span>연동 / GitHub 설정</span>
+                    </button>
+
+                    <!-- Print / Export Button -->
+                    <button onclick="window.print()" class="p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition" title="인쇄">
+                        <i data-lucide="printer" class="w-5 h-5"></i>
+                    </button>
+                    <button onclick="exportToCSV()" class="p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition" title="CSV 내보내기">
+                        <i data-lucide="download" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Navigation Tabs -->
+    <div class="bg-white border-b border-slate-200 no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <nav class="flex space-x-8 overflow-x-auto" aria-label="Tabs">
+                <button onclick="switchTab('scheduleTab')" id="tab-scheduleTab" class="tab-btn flex items-center space-x-2 py-3 px-1 border-b-2 border-sky-600 text-sky-600 font-semibold text-sm whitespace-nowrap">
+                    <i data-lucide="calendar" class="w-4 h-4"></i>
+                    <span>월간 근무 스케줄</span>
+                </button>
+                <button onclick="switchTab('requestsTab')" id="tab-requestsTab" class="tab-btn flex items-center space-x-2 py-3 px-1 border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium text-sm whitespace-nowrap">
+                    <i data-lucide="calendar-heart" class="w-4 h-4"></i>
+                    <span>신청 휴일 & 충돌 보정</span>
+                    <span id="conflictBadge" class="hidden ml-1 px-1.5 py-0.5 text-xs bg-rose-500 text-white rounded-full font-bold">0</span>
+                </button>
+                <button onclick="switchTab('nursesTab')" id="tab-nursesTab" class="tab-btn flex items-center space-x-2 py-3 px-1 border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium text-sm whitespace-nowrap">
+                    <i data-lucide="users" class="w-4 h-4"></i>
+                    <span>간호사 관리 (<span id="nurseCountBadge">0</span>명)</span>
+                </button>
+                <button onclick="switchTab('rulesTab')" id="tab-rulesTab" class="tab-btn flex items-center space-x-2 py-3 px-1 border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium text-sm whitespace-nowrap">
+                    <i data-lucide="shield-check" class="w-4 h-4"></i>
+                    <span>자동 작성 & 검증 규칙</span>
+                </button>
+                <button onclick="switchTab('swapRequestsTab')" id="tab-swapRequestsTab" class="tab-btn flex items-center space-x-2 py-3 px-1 border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium text-sm whitespace-nowrap">
+                    <i data-lucide="arrow-left-right" class="w-4 h-4"></i>
+                    <span>근무 교환 요청</span>
+                    <span id="swapBadge" class="hidden ml-1 px-1.5 py-0.5 text-xs bg-rose-500 text-white rounded-full">0</span>
+                </button>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Main Content Body -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <!-- ==================== TAB 1: SCHEDULE VIEW ==================== -->
+        <section id="scheduleTab" class="tab-content space-y-4">
+            
+            <!-- Controls Toolbar -->
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4 no-print">
+                <!-- Month & Year Selector -->
+                <div class="flex items-center space-x-3">
+                    <button onclick="changeMonth(-1)" class="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition">
+                        <i data-lucide="chevron-left" class="w-5 h-5 text-slate-600"></i>
+                    </button>
+                    <div class="text-center">
+                        <span id="currentYearMonth" class="text-lg font-bold text-slate-800">2026년 10월</span>
+                    </div>
+                    <button onclick="changeMonth(1)" class="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition">
+                        <i data-lucide="chevron-right" class="w-5 h-5 text-slate-600"></i>
+                    </button>
+                </div>
+
+                <!-- Shift Badge Legend -->
+                <div class="flex items-center space-x-2 text-xs flex-wrap gap-y-1">
+                    <span class="font-semibold text-slate-500 mr-1">범례:</span>
+                    <span class="px-2 py-1 rounded bg-sky-100 text-sky-800 font-bold">D 낮</span>
+                    <span class="px-2 py-1 rounded bg-amber-100 text-amber-800 font-bold">E 저녁 (3교대)</span>
+                    <span class="px-2 py-1 rounded bg-indigo-100 text-indigo-800 font-bold">N 나이트</span>
+                    <span class="px-2 py-1 rounded bg-slate-100 text-slate-700 font-bold">OFF 휴무</span>
+                    <span class="px-2 py-1 rounded bg-rose-100 text-rose-800 font-bold">REQ 신청휴일</span>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex items-center space-x-2">
+                    <button onclick="validateCurrentSchedule()" class="px-3.5 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 font-semibold text-xs transition flex items-center space-x-1.5">
+                        <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                        <span>규칙 검증</span>
+                    </button>
+                    <button onclick="autoGenerateSchedule()" class="px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs transition flex items-center space-x-1.5 shadow-sm">
+                        <i data-lucide="wand-2" class="w-4 h-4"></i>
+                        <span>스마트 자동 근무 작성</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Validation Summary Banner (Alerts) -->
+            <div id="validationResultBox" class="hidden p-4 rounded-xl border transition-all"></div>
+
+            <!-- Schedule Grid Table -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-xs text-left border-collapse" id="scheduleTable">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold sticky top-0 z-10">
+                            <tr id="scheduleHeaderRow">
+                                <!-- Generated Dynamically -->
+                            </tr>
+                        </thead>
+                        <tbody id="scheduleBody" class="divide-y divide-slate-200">
+                            <!-- Generated Dynamically -->
+                        </tbody>
+                        <tfoot id="scheduleFooter" class="bg-slate-50 border-t border-slate-200 font-medium">
+                            <!-- Total Shifts Summary per Day -->
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 2: REQUESTED OFF & CONFLICT RESOLUTION ==================== -->
+        <section id="requestsTab" class="tab-content space-y-4 hidden">
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6">
+                <div class="flex justify-between items-start border-b border-slate-200 pb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800 flex items-center space-x-2">
+                            <i data-lucide="calendar-heart" class="w-5 h-5 text-rose-500"></i>
+                            <span>월별 신청 휴일 (Off Request) 현황 및 충돌 보정</span>
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-1">간호사별 매월 1~2개의 신청 휴일을 지정하며, 인원 부족 충돌 발생 시 임의의 1명을 선택하여 휴일을 자동 보정할 수 있습니다.</p>
+                    </div>
+                </div>
+
+                <!-- Conflict Warning Alert Box -->
+                <div id="conflictAlertContainer" class="hidden p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-2">
+                    <div class="flex items-center space-x-2 font-bold text-sm">
+                        <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>
+                        <span id="conflictSummaryTitle">신청 휴일 충돌 발생!</span>
+                    </div>
+                    <div id="conflictList" class="space-y-2 text-xs"></div>
+                </div>
+
+                <!-- Nurse Off Request Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="requestOffCardsContainer">
+                    <!-- Populated Dynamically -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 3: NURSE MANAGEMENT ==================== -->
+        <section id="nursesTab" class="tab-content space-y-4 hidden">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800">병동 간호사 명단 관리</h2>
+                    <p class="text-xs text-slate-500">간호사별 2교대/3교대 근무 형태, 직급, 최대 야간 근무수를 설정합니다.</p>
+                </div>
+                <button onclick="openNurseModal()" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold flex items-center space-x-1.5 transition">
+                    <i data-lucide="user-plus" class="w-4 h-4"></i>
+                    <span>새 간호사 등록</span>
+                </button>
+            </div>
+
+            <!-- Nurse List Cards Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="nurseCardsContainer">
+                <!-- Dynamically populated -->
+            </div>
+        </section>
+
+        <!-- ==================== TAB 4: AUTO RULES & VALIDATION ==================== -->
+        <section id="rulesTab" class="tab-content space-y-4 hidden">
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm max-w-3xl mx-auto space-y-6">
+                <div class="border-b border-slate-200 pb-4">
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center space-x-2">
+                        <i data-lucide="sliders" class="w-5 h-5 text-sky-600"></i>
+                        <span>근무 수립 및 자동 작성 제약 규칙 설정</span>
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-1">2교대/3교대 특성 및 나이트 휴무 원칙 가이드라인을 세부 설정하세요.</p>
+                </div>
+
+                <div class="space-y-4 text-sm">
+                    <!-- Night Constraint Notice -->
+                    <div class="p-3.5 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-900 space-y-1">
+                        <p class="font-bold flex items-center space-x-1">
+                            <i data-lucide="moon" class="w-4 h-4 text-indigo-600"></i>
+                            <span>나이트(Night) 근무 원칙 및 제약사항</span>
+                        </p>
+                        <ul class="list-disc list-inside space-y-0.5 text-slate-600 pl-1">
+                            <li><strong>나이트 연속배치 원칙:</strong> 연속 2일 이상 배치를 지양(기본 최대 1~2일 권장)하되, 필요 시 수동 오버라이드가 가능합니다.</li>
+                            <li><strong>N 직후 배치 금지:</strong> N(나이트) 근무 다음 날에는 데이(D) 또는 이브닝(E) 배치가 절대 금지됩니다 (N → OFF).</li>
+                            <li><strong>N 2일 이상 연속 근무 후:</strong> 다음 날 무조건 필수 OFF가 우선 배치됩니다.</li>
+                        </ul>
+                    </div>
+
+                    <!-- 2-Shift Off Constraint Notice -->
+                    <div class="p-3.5 bg-emerald-50 border border-emerald-100 rounded-lg text-xs text-emerald-900 space-y-1">
+                        <p class="font-bold flex items-center space-x-1">
+                            <i data-lucide="clock" class="w-4 h-4 text-emerald-600"></i>
+                            <span>2교대(12h) 전용 휴무 보장 원칙</span>
+                        </p>
+                        <p class="text-slate-600">2교대 근무자는 피로도를 고려하여 월 최소 3일 이상의 보장 휴일을 유지해야 합니다.</p>
+                    </div>
+
+                    <!-- Rule 1: Continuous Work -->
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                        <div>
+                            <p class="font-semibold text-slate-800">최대 연속 근무 일수 제한</p>
+                            <p class="text-xs text-slate-500">과도한 피로 방지를 위해 최대 연속 근무일을 제한합니다.</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="number" id="ruleMaxConsecutive" value="5" min="3" max="7" class="w-16 p-1.5 border border-slate-300 rounded text-center text-sm font-bold">
+                            <span class="text-xs font-medium text-slate-600">일</span>
+                        </div>
+                    </div>
+
+                    <!-- Rule 2: Max Consecutive Night Limit -->
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                        <div>
+                            <p class="font-semibold text-slate-800">나이트 권장 연속 제한 (원칙)</p>
+                            <p class="text-xs text-slate-500">2일 이상 배치를 지양합니다. (경고 알림 표시)</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="number" id="ruleMaxConsecutiveNight" value="2" min="1" max="3" class="w-16 p-1.5 border border-slate-300 rounded text-center text-sm font-bold">
+                            <span class="text-xs font-medium text-slate-600">일</span>
+                        </div>
+                    </div>
+
+                    <!-- Rule 3: Minimum Required Nurses per Shift -->
+                    <div class="border-t border-slate-200 pt-4">
+                        <h3 class="font-bold text-slate-800 text-sm mb-3">일별 최소 필요 인원 수 (Shift 필수 인원)</h3>
+                        <div class="grid grid-cols-3 gap-3">
+                            <div class="p-3 bg-sky-50 border border-sky-100 rounded-lg text-center">
+                                <span class="text-xs font-bold text-sky-800 block mb-1">낮 (Day)</span>
+                                <input type="number" id="reqDay" value="3" min="1" class="w-full p-1 border border-sky-200 rounded text-center font-bold">
+                            </div>
+                            <div class="p-3 bg-amber-50 border border-amber-100 rounded-lg text-center">
+                                <span class="text-xs font-bold text-amber-800 block mb-1">저녁 (Evening - 3교대만)</span>
+                                <input type="number" id="reqEvening" value="2" min="1" class="w-full p-1 border border-amber-200 rounded text-center font-bold">
+                            </div>
+                            <div class="p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-center">
+                                <span class="text-xs font-bold text-indigo-800 block mb-1">나이트 (Night)</span>
+                                <input type="number" id="reqNight" value="2" min="1" class="w-full p-1 border border-indigo-200 rounded text-center font-bold">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end pt-4">
+                    <button onclick="saveRulesSettings()" class="px-5 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs transition">
+                        규칙 저장하기
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 5: SWAP REQUEST BOARD ==================== -->
+        <section id="swapRequestsTab" class="tab-content space-y-4 hidden">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800">근무 교환 신청 및 알림</h2>
+                    <p class="text-xs text-slate-500">간호사 간 근무 일정을 서로 변경 및 요청할 수 있는 게시판입니다.</p>
+                </div>
+                <button onclick="openModal('swapModal')" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold flex items-center space-x-1.5 transition">
+                    <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                    <span>교환 신청하기</span>
+                </button>
+            </div>
+
+            <!-- Request List -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 divide-y divide-slate-200" id="swapListContainer">
+                <!-- Dynamically Populated -->
+            </div>
+        </section>
+    </main>
+
+    <!-- ==================== MODALS ==================== -->
+
+    <!-- Nurse Add/Edit Modal -->
+    <div id="nurseModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 overflow-hidden border border-slate-100">
+            <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 text-base" id="nurseModalTitle">간호사 정보 등록</h3>
+                <button onclick="closeModal('nurseModal')" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <form id="nurseForm" onsubmit="saveNurse(event)" class="p-6 space-y-4">
+                <input type="hidden" id="nurseId">
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">이름 *</label>
+                    <input type="text" id="nurseName" required class="w-full p-2.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">근무 형태 (교대) *</label>
+                        <select id="nurseShiftType" class="w-full p-2.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 outline-none bg-sky-50 font-bold text-sky-900">
+                            <option value="3교대" selected>3교대 (D, E, N)</option>
+                            <option value="2교대">2교대 (D, N 12시간)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">직책 / 역할</label>
+                        <select id="nurseRole" class="w-full p-2.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 outline-none">
+                            <option value="수간호사">수간호사 (HN)</option>
+                            <option value="책임간호사">책임간호사 (Charge)</option>
+                            <option value="시니어 간호사">시니어 (Senior)</option>
+                            <option value="주니어 간호사" selected>주니어 (Junior)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">최대 Night 수 / 월</label>
+                    <input type="number" id="nurseMaxNight" value="6" min="0" max="15" class="w-full p-2.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500 outline-none">
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-4">
+                    <button type="button" onclick="closeModal('nurseModal')" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium">취소</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold">저장하기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN JAVASCRIPT LOGIC -->
+    <script>
+        // ==================== INITIAL DUMMY DATA ====================
+        const DEFAULT_NURSES = [
+            { id: 'n1', name: '김수간', role: '수간호사', shiftType: '3교대', maxNight: 2, requestOffs: [1, 15] },
+            { id: 'n2', name: '박책임', role: '책임간호사', shiftType: '3교대', maxNight: 4, requestOffs: [5, 12] },
+            { id: 'n3', name: '이시니어', role: '시니어 간호사', shiftType: '2교대', maxNight: 6, requestOffs: [5] },
+            { id: 'n4', name: '최주니어', role: '주니어 간호사', shiftType: '3교대', maxNight: 7, requestOffs: [2, 16] },
+            { id: 'n5', name: '정주니어', role: '주니어 간호사', shiftType: '2교대', maxNight: 7, requestOffs: [8, 19] },
+            { id: 'n6', name: '한신입', role: '주니어 간호사', shiftType: '3교대', maxNight: 5, requestOffs: [5, 25] }
+        ];
+
+        const SHIFT_TYPES = {
+            D: { label: 'D', name: '낮', color: 'bg-sky-100 text-sky-800 border-sky-200' },
+            E: { label: 'E', name: '저녁', color: 'bg-amber-100 text-amber-800 border-amber-200' },
+            N: { label: 'N', name: '나이트', color: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
+            OFF: { label: 'OFF', name: '휴무', color: 'bg-slate-100 text-slate-700 border-slate-200' },
+            REQ: { label: 'REQ', name: '신청휴일', color: 'bg-rose-100 text-rose-800 border-rose-300 font-bold' }
+        };
+
+        // ==================== APP STATE ====================
+        let state = {
+            year: 2026,
+            month: 10,
+            nurses: [],
+            schedules: {},
+            rules: {
+                maxConsecutive: 5,
+                maxConsecutiveNight: 2,
+                minOff2Shift: 3,
+                reqDay: 3,
+                reqEvening: 2,
+                reqNight: 2
+            },
+            swapRequests: []
+        };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            loadStateFromLocalStorage();
+            initializeDefaultScheduleIfEmpty();
+            renderAll();
+        });
+
+        function loadStateFromLocalStorage() {
+            const savedNurses = localStorage.getItem('duty_nurses_v2');
+            const savedSchedules = localStorage.getItem('duty_schedules_v2');
+            const savedRules = localStorage.getItem('duty_rules_v2');
+            const savedSwaps = localStorage.getItem('duty_swaps_v2');
+
+            state.nurses = savedNurses ? JSON.parse(savedNurses) : DEFAULT_NURSES;
+            state.schedules = savedSchedules ? JSON.parse(savedSchedules) : {};
+            if (savedRules) state.rules = JSON.parse(savedRules);
+            if (savedSwaps) state.swapRequests = JSON.parse(savedSwaps);
+
+            document.getElementById('ruleMaxConsecutive').value = state.rules.maxConsecutive;
+            document.getElementById('ruleMaxConsecutiveNight').value = state.rules.maxConsecutiveNight || 2;
+            document.getElementById('reqDay').value = state.rules.reqDay;
+            document.getElementById('reqEvening').value = state.rules.reqEvening;
+            document.getElementById('reqNight').value = state.rules.reqNight;
+        }
+
+        function saveStateToLocalStorage() {
+            localStorage.setItem('duty_nurses_v2', JSON.stringify(state.nurses));
+            localStorage.setItem('duty_schedules_v2', JSON.stringify(state.schedules));
+            localStorage.setItem('duty_rules_v2', JSON.stringify(state.rules));
+            localStorage.setItem('duty_swaps_v2', JSON.stringify(state.swapRequests));
+        }
+
+        function initializeDefaultScheduleIfEmpty() {
+            const key = `${state.year}-${state.month}`;
+            if (!state.schedules[key]) {
+                state.schedules[key] = {};
+                const daysCount = getDaysInMonth(state.year, state.month);
+
+                state.nurses.forEach((nurse, idx) => {
+                    state.schedules[key][nurse.id] = {};
+                    for (let day = 1; day <= daysCount; day++) {
+                        let shift = 'D';
+
+                        // Apply Request Offs first
+                        if (nurse.requestOffs && nurse.requestOffs.includes(day)) {
+                            shift = 'REQ';
+                        } else {
+                            if ((day + idx) % 6 === 0) shift = 'OFF';
+                            else if (nurse.shiftType === '3교대' && (day + idx) % 4 === 0) shift = 'E';
+                            else if ((day + idx) % 5 === 0) shift = 'N';
+                        }
+                        state.schedules[key][nurse.id][day] = shift;
+                    }
+                });
+                saveStateToLocalStorage();
+            }
+        }
+
+        function getDaysInMonth(year, month) {
+            return new Date(year, month, 0).getDate();
+        }
+
+        function getDayName(year, month, day) {
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            return days[new Date(year, month - 1, day).getDay()];
+        }
+
+        // ==================== RENDERING ====================
+        function renderAll() {
+            renderHeaderInfo();
+            renderScheduleTable();
+            renderNurseList();
+            renderRequestOffsSection();
+            renderSwapRequests();
+            document.getElementById('nurseCountBadge').innerText = state.nurses.length;
+            lucide.createIcons();
+        }
+
+        function renderHeaderInfo() {
+            document.getElementById('currentYearMonth').innerText = `${state.year}년 ${state.month}월`;
+        }
+
+        function renderScheduleTable() {
+            const daysCount = getDaysInMonth(state.year, state.month);
+            const key = `${state.year}-${state.month}`;
+            const currentSchedule = state.schedules[key] || {};
+
+            const headerRow = document.getElementById('scheduleHeaderRow');
+            let headerHTML = `
+                <th class="p-3 w-36 border-r border-slate-200 bg-slate-100 text-slate-700 sticky left-0 z-20">간호사명 / 구분</th>
+            `;
+
+            for (let day = 1; day <= daysCount; day++) {
+                const dayName = getDayName(state.year, state.month, day);
+                const isWeekend = dayName === '토' || dayName === '일';
+                const dayColor = dayName === '일' ? 'text-rose-500' : (dayName === '토' ? 'text-sky-600' : 'text-slate-700');
+
+                headerHTML += `
+                    <th class="p-2 text-center border-r border-slate-200 min-w-[42px] ${isWeekend ? 'bg-slate-100/70' : ''}">
+                        <div class="text-[10px] text-slate-400 font-normal">${dayName}</div>
+                        <div class="text-xs font-bold ${dayColor}">${day}</div>
+                    </th>
+                `;
+            }
+
+            headerHTML += `
+                <th class="p-2 text-center min-w-[36px] bg-sky-50 text-sky-800">D</th>
+                <th class="p-2 text-center min-w-[36px] bg-amber-50 text-amber-800">E</th>
+                <th class="p-2 text-center min-w-[36px] bg-indigo-50 text-indigo-800">N</th>
+                <th class="p-2 text-center min-w-[40px] bg-slate-100 text-slate-700">OFF</th>
+            `;
+
+            headerRow.innerHTML = headerHTML;
+
+            const body = document.getElementById('scheduleBody');
+            let bodyHTML = '';
+
+            state.nurses.forEach(nurse => {
+                const nurseShifts = currentSchedule[nurse.id] || {};
+                let countD = 0, countE = 0, countN = 0, countOFF = 0;
+
+                bodyHTML += `<tr class="hover:bg-slate-50/80 transition">`;
+                bodyHTML += `
+                    <td class="p-2 font-medium text-slate-800 border-r border-slate-200 bg-white sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                        <div class="flex items-center space-x-1.5">
+                            <span class="font-bold text-slate-800 text-xs">${nurse.name}</span>
+                            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${nurse.shiftType === '2교대' ? 'bg-purple-100 text-purple-800' : 'bg-sky-100 text-sky-800'}">${nurse.shiftType || '3교대'}</span>
+                        </div>
+                        <div class="text-[10px] text-slate-400">${nurse.role}</div>
+                    </td>
+                `;
+
+                for (let day = 1; day <= daysCount; day++) {
+                    const shift = nurseShifts[day] || 'OFF';
+                    if (shift === 'D') countD++;
+                    else if (shift === 'E') countE++;
+                    else if (shift === 'N') countN++;
+                    else if (shift === 'OFF' || shift === 'REQ') countOFF++;
+
+                    const badgeStyle = SHIFT_TYPES[shift] ? SHIFT_TYPES[shift].color : 'bg-slate-100 text-slate-600';
+
+                    // Restrict Evening shift for 2-shift nurses
+                    const is2Shift = nurse.shiftType === '2교대';
+
+                    bodyHTML += `
+                        <td class="p-1 border-r border-slate-200 text-center">
+                            <select onchange="updateShift('${nurse.id}', ${day}, this.value)" 
+                                    class="w-8 h-7 text-xs font-bold rounded cursor-pointer border text-center transition focus:ring-1 focus:ring-sky-500 ${badgeStyle}">
+                                <option value="D" ${shift === 'D' ? 'selected' : ''}>D</option>
+                                ${!is2Shift ? `<option value="E" ${shift === 'E' ? 'selected' : ''}>E</option>` : ''}
+                                <option value="N" ${shift === 'N' ? 'selected' : ''}>N</option>
+                                <option value="OFF" ${shift === 'OFF' ? 'selected' : ''}>OFF</option>
+                                <option value="REQ" ${shift === 'REQ' ? 'selected' : ''}>REQ</option>
+                            </select>
+                        </td>
+                    `;
+                }
+
+                bodyHTML += `
+                    <td class="p-1 text-center font-semibold text-sky-700 bg-sky-50/50">${countD}</td>
+                    <td class="p-1 text-center font-semibold text-amber-700 bg-amber-50/50">${nurse.shiftType === '2교대' ? '-' : countE}</td>
+                    <td class="p-1 text-center font-semibold text-indigo-700 bg-indigo-50/50">${countN}</td>
+                    <td class="p-1 text-center font-semibold text-slate-700 bg-slate-100/50">${countOFF}</td>
+                `;
+
+                bodyHTML += `</tr>`;
+            });
+
+            body.innerHTML = bodyHTML;
+            renderScheduleFooter(daysCount, currentSchedule);
+        }
+
+        function renderScheduleFooter(daysCount, currentSchedule) {
+            const footer = document.getElementById('scheduleFooter');
+            let footerHTML = `
+                <tr>
+                    <td class="p-2 border-r border-slate-200 sticky left-0 bg-slate-50 text-xs font-bold text-slate-700">일별 인원 총계</td>
+            `;
+
+            for (let day = 1; day <= daysCount; day++) {
+                let d = 0, e = 0, n = 0;
+                state.nurses.forEach(nurse => {
+                    const shift = (currentSchedule[nurse.id] && currentSchedule[nurse.id][day]) || 'OFF';
+                    if (shift === 'D') d++;
+                    if (shift === 'E') e++;
+                    if (shift === 'N') n++;
+                });
+
+                const reqD = parseInt(state.rules.reqDay);
+                const reqE = parseInt(state.rules.reqEvening);
+                const reqN = parseInt(state.rules.reqNight);
+
+                const isWarning = d < reqD || e < reqE || n < reqN;
+
+                footerHTML += `
+                    <td class="p-1 text-center border-r border-slate-200 ${isWarning ? 'bg-rose-50' : ''}">
+                        <div class="text-[10px] text-sky-700 font-bold">D:${d}</div>
+                        <div class="text-[10px] text-amber-700 font-bold">E:${e}</div>
+                        <div class="text-[10px] text-indigo-700 font-bold">N:${n}</div>
+                    </td>
+                `;
+            }
+
+            footerHTML += `<td colspan="4" class="bg-slate-100"></td></tr>`;
+            footer.innerHTML = footerHTML;
+        }
+
+        function updateShift(nurseId, day, newShift) {
+            const key = `${state.year}-${state.month}`;
+            if (!state.schedules[key]) state.schedules[key] = {};
+            if (!state.schedules[key][nurseId]) state.schedules[key][nurseId] = {};
+
+            state.schedules[key][nurseId][day] = newShift;
+            saveStateToLocalStorage();
+            renderScheduleTable();
+            checkRequestOffConflicts();
+        }
+
+        function changeMonth(delta) {
+            state.month += delta;
+            if (state.month > 12) {
+                state.month = 1;
+                state.year++;
+            } else if (state.month < 1) {
+                state.month = 12;
+                state.year--;
+            }
+            initializeDefaultScheduleIfEmpty();
+            renderAll();
+        }
+
+        // ==================== REQUEST OFF & CONFLICT RESOLUTION ====================
+
+        function renderRequestOffsSection() {
+            const container = document.getElementById('requestOffCardsContainer');
+            if (!container) return;
+
+            container.innerHTML = state.nurses.map(nurse => {
+                const reqs = nurse.requestOffs || [];
+                return `
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <span class="font-bold text-slate-800 text-sm">${nurse.name}</span>
+                                <span class="text-[10px] ml-1.5 px-2 py-0.5 rounded ${nurse.shiftType === '2교대' ? 'bg-purple-100 text-purple-800' : 'bg-sky-100 text-sky-800'} font-semibold">${nurse.shiftType || '3교대'}</span>
+                            </div>
+                            <span class="text-xs text-slate-500">신청: <strong>${reqs.length}</strong> / 2개</span>
+                        </div>
+
+                        <!-- Date Tags -->
+                        <div class="flex flex-wrap gap-1.5 min-h-[32px] items-center">
+                            ${reqs.map(day => `
+                                <span class="inline-flex items-center space-x-1 px-2.5 py-1 bg-rose-100 text-rose-800 rounded-lg text-xs font-bold">
+                                    <span>${day}일</span>
+                                    <button onclick="removeRequestOff('${nurse.id}', ${day})" class="hover:text-rose-900 ml-1">×</button>
+                                </span>
+                            `).join('')}
+                            ${reqs.length < 2 ? `
+                                <button onclick="promptAddRequestOff('${nurse.id}')" class="px-2.5 py-1 border border-dashed border-slate-300 hover:border-rose-400 text-slate-500 hover:text-rose-600 rounded-lg text-xs font-semibold">
+                                    + 신청일 추가
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            checkRequestOffConflicts();
+        }
+
+        function promptAddRequestOff(nurseId) {
+            const daysCount = getDaysInMonth(state.year, state.month);
+            const input = prompt(`신청할 휴일 날짜를 입력하세요 (1 ~ ${daysCount}일):`);
+            if (!input) return;
+
+            const day = parseInt(input.trim());
+            if (isNaN(day) || day < 1 || day > daysCount) {
+                alert('올바른 날짜를 입력하세요.');
+                return;
+            }
+
+            const nurse = state.nurses.find(n => n.id === nurseId);
+            if (!nurse) return;
+
+            if (!nurse.requestOffs) nurse.requestOffs = [];
+            if (nurse.requestOffs.includes(day)) {
+                alert('이미 등록된 신청 휴일입니다.');
+                return;
+            }
+
+            if (nurse.requestOffs.length >= 2) {
+                alert('매월 최대 2개까지만 신청할 수 있습니다.');
+                return;
+            }
+
+            nurse.requestOffs.push(day);
+            nurse.requestOffs.sort((a, b) => a - b);
+
+            // Apply to current schedule
+            const key = `${state.year}-${state.month}`;
+            if (state.schedules[key] && state.schedules[key][nurseId]) {
+                state.schedules[key][nurseId][day] = 'REQ';
+            }
+
+            saveStateToLocalStorage();
+            renderAll();
+        }
+
+        function removeRequestOff(nurseId, day) {
+            const nurse = state.nurses.find(n => n.id === nurseId);
+            if (!nurse || !nurse.requestOffs) return;
+
+            nurse.requestOffs = nurse.requestOffs.filter(d => d !== day);
+
+            // Restore shift in schedule
+            const key = `${state.year}-${state.month}`;
+            if (state.schedules[key] && state.schedules[key][nurseId]) {
+                state.schedules[key][nurseId][day] = 'OFF';
+            }
+
+            saveStateToLocalStorage();
+            renderAll();
+        }
+
+        // Check conflicts where too many request offs on same day lead to shortage
+        function checkRequestOffConflicts() {
+            const daysCount = getDaysInMonth(state.year, state.month);
+            const totalNurses = state.nurses.length;
+            const minNeeded = parseInt(state.rules.reqDay) + parseInt(state.rules.reqEvening) + parseInt(state.rules.reqNight);
+
+            const conflicts = [];
+
+            for (let day = 1; day <= daysCount; day++) {
+                const requestedNurses = state.nurses.filter(n => n.requestOffs && n.requestOffs.includes(day));
+
+                // If available nurses < minNeeded
+                if (totalNurses - requestedNurses.length < minNeeded) {
+                    conflicts.push({
+                        day,
+                        nurses: requestedNurses,
+                        count: requestedNurses.length,
+                        available: totalNurses - requestedNurses.length,
+                        needed: minNeeded
+                    });
+                }
+            }
+
+            const alertBox = document.getElementById('conflictAlertContainer');
+            const conflictBadge = document.getElementById('conflictBadge');
+
+            if (conflicts.length > 0) {
+                conflictBadge.innerText = conflicts.length;
+                conflictBadge.classList.remove('hidden');
+
+                alertBox.classList.remove('hidden');
+                document.getElementById('conflictSummaryTitle').innerText = `신청 휴일 중복 충돌 (${conflicts.length}건 발생)`;
+
+                document.getElementById('conflictList').innerHTML = conflicts.map(c => `
+                    <div class="flex flex-wrap items-center justify-between p-2.5 bg-white rounded-lg border border-amber-200">
+                        <div>
+                            <span class="font-bold text-rose-700 text-xs">[${c.day}일]</span>
+                            <span class="text-slate-700">신청 인원 ${c.count}명 (${c.nurses.map(n => n.name).join(', ')})</span>
+                            <span class="text-slate-400 text-[11px]">→ 가용 인원 ${c.available}명 (필요: ${c.needed}명)</span>
+                        </div>
+                        <button onclick="resolveConflictRandomly(${c.day})" class="mt-1 sm:mt-0 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold text-xs shadow-sm flex items-center space-x-1">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                            <span>임의의 1명 보정 변경</span>
+                        </button>
+                    </div>
+                `).join('');
+            } else {
+                conflictBadge.classList.add('hidden');
+                alertBox.classList.add('hidden');
+            }
+            lucide.createIcons();
+        }
+
+        // Randomly resolve 1 nurse's off request for the conflicting day
+        function resolveConflictRandomly(day) {
+            const requestedNurses = state.nurses.filter(n => n.requestOffs && n.requestOffs.includes(day));
+            if (requestedNurses.length === 0) return;
+
+            // Select 1 random nurse
+            const chosenNurse = requestedNurses[Math.floor(Math.random() * requestedNurses.length)];
+
+            if (confirm(`[${day}일] 충돌 보정을 위해 [${chosenNurse.name}] 간호사의 신청 휴일을 변경/해제하시겠습니까?`)) {
+                removeRequestOff(chosenNurse.id, day);
+                alert(`[${chosenNurse.name}] 간호사의 ${day}일 신청 휴일이 보정 조치되었습니다.`);
+            }
+        }
+
+        // ==================== VALIDATION & AUTO GENERATE ENGINE ====================
+
+        function validateCurrentSchedule() {
+            const daysCount = getDaysInMonth(state.year, state.month);
+            const key = `${state.year}-${state.month}`;
+            const currentSchedule = state.schedules[key] || {};
+            const errors = [];
+            const warnings = [];
+
+            state.nurses.forEach(nurse => {
+                const shifts = currentSchedule[nurse.id] || {};
+                let consecutiveCount = 0;
+                let consecutiveNightCount = 0;
+                let nightTotal = 0;
+                let offTotal = 0;
+
+                for (let day = 1; day <= daysCount; day++) {
+                    const curr = shifts[day] || 'OFF';
+                    const prev = shifts[day - 1] || 'OFF';
+
+                    // 1. Consecutive work limit
+                    if (curr !== 'OFF' && curr !== 'REQ') {
+                        consecutiveCount++;
+                        if (consecutiveCount > state.rules.maxConsecutive) {
+                            errors.push(`[${nurse.name}] ${day}일: 연속 근무 ${consecutiveCount}일 초과 (최대 ${state.rules.maxConsecutive}일)`);
+                        }
+                    } else {
+                        consecutiveCount = 0;
+                        offTotal++;
+                    }
+
+                    // 2. Night constraints
+                    if (curr === 'N') {
+                        nightTotal++;
+                        consecutiveNightCount++;
+
+                        // Night consecutive check (Default guideline: max 2)
+                        if (consecutiveNightCount > (state.rules.maxConsecutiveNight || 2)) {
+                            warnings.push(`[${nurse.name}] ${day}일: 연속 나이트 ${consecutiveNightCount}일 배치 (원칙: 2일 이하 권장)`);
+                        }
+                    } else {
+                        // N 2일 이상 후 다음날 무조건 OFF 검증
+                        if (consecutiveNightCount >= 2 && curr !== 'OFF' && curr !== 'REQ') {
+                            errors.push(`[${nurse.name}] ${day}일: 나이트 2일 이상 연속 근무 후 필수 휴무(OFF) 미배치!`);
+                        }
+                        consecutiveNightCount = 0;
+                    }
+
+                    // 3. Mandatory Prohibition: N -> D or N -> E
+                    if (prev === 'N' && (curr === 'D' || curr === 'E')) {
+                        errors.push(`[${nurse.name}] ${day}일: 나이트 직후 낮/저녁 근무(N → ${curr}) 금지 위반!`);
+                    }
+
+                    // 4. 2-Shift Nurse Restrictions
+                    if (nurse.shiftType === '2교대' && curr === 'E') {
+                        errors.push(`[${nurse.name}] ${day}일: 2교대 근무자에게 이브닝(E) 근무가 잘못 배치됨!`);
+                    }
+                }
+
+                // Night Limit Check
+                if (nightTotal > nurse.maxNight) {
+                    warnings.push(`[${nurse.name}] 월간 나이트(${nightTotal}회)가 개인 한도(${nurse.maxNight}회) 초과`);
+                }
+
+                // 2-Shift Min Off Check (At least 3 days OFF guaranteed)
+                if (nurse.shiftType === '2교대' && offTotal < (state.rules.minOff2Shift || 3)) {
+                    errors.push(`[${nurse.name}] 2교대 필수 휴일(${offTotal}일) 부족! 최소 ${state.rules.minOff2Shift || 3}일 이상 보장 필요.`);
+                }
+            });
+
+            // Display Validation Results
+            const resultBox = document.getElementById('validationResultBox');
+            resultBox.classList.remove('hidden');
+
+            if (errors.length === 0 && warnings.length === 0) {
+                resultBox.className = "p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs space-y-1";
+                resultBox.innerHTML = `
+                    <div class="flex items-center space-x-2 font-bold text-sm">
+                        <i data-lucide="check-circle" class="w-5 h-5 text-emerald-600"></i>
+                        <span>모든 2교대/3교대 근무 규칙 및 나이트 휴무 검증 통과!</span>
+                    </div>
+                `;
+            } else {
+                resultBox.className = "p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-2";
+                let errListHTML = errors.map(e => `<li class="list-disc list-inside font-bold text-rose-900">${e}</li>`).join('');
+                let warnListHTML = warnings.map(w => `<li class="list-disc list-inside text-amber-800">${w}</li>`).join('');
+
+                resultBox.innerHTML = `
+                    <div class="flex items-center space-x-2 font-bold text-sm text-rose-900">
+                        <i data-lucide="alert-triangle" class="w-5 h-5 text-rose-600"></i>
+                        <span>검증 결과 (위반 ${errors.length}건, 권고사항 ${warnings.length}건):</span>
+                    </div>
+                    <ul class="space-y-1 font-medium pl-2 max-h-48 overflow-y-auto">${errListHTML}${warnListHTML}</ul>
+                `;
+            }
+            lucide.createIcons();
+        }
+
+        // Smart Auto Scheduling Algorithm
+        function autoGenerateSchedule() {
+            if (!confirm('현재 월의 스케줄이 신청 휴일, 2교대/3교대 특성 및 나이트 휴무 보장 알고리즘으로 자동 수립됩니다. 계속하시겠습니까?')) return;
+
+            const daysCount = getDaysInMonth(state.year, state.month);
+            const key = `${state.year}-${state.month}`;
+            state.schedules[key] = {};
+
+            const reqD = parseInt(state.rules.reqDay);
+            const reqE = parseInt(state.rules.reqEvening);
+            const reqN = parseInt(state.rules.reqNight);
+
+            state.nurses.forEach(nurse => {
+                state.schedules[key][nurse.id] = {};
+            });
+
+            for (let day = 1; day <= daysCount; day++) {
+                // Step 1: Assign Request Offs first
+                state.nurses.forEach(nurse => {
+                    if (nurse.requestOffs && nurse.requestOffs.includes(day)) {
+                        state.schedules[key][nurse.id][day] = 'REQ';
+                    }
+                });
+
+                // Step 2: Enforce Mandatory OFF after N or 2+ consecutive Night
+                state.nurses.forEach(nurse => {
+                    const prev1 = state.schedules[key][nurse.id][day - 1];
+                    const prev2 = state.schedules[key][nurse.id][day - 2];
+
+                    if (prev1 === 'N') {
+                        // After N, next day must be OFF (or REQ)
+                        if (!state.schedules[key][nurse.id][day]) {
+                            state.schedules[key][nurse.id][day] = 'OFF';
+                        }
+                    }
+                });
+
+                // Step 3: Assign Night to available nurses (max 1~2 consecutive preferred)
+                let unassignedNurses = state.nurses.filter(n => !state.schedules[key][n.id][day]);
+                unassignedNurses.sort(() => Math.random() - 0.5);
+
+                let nightAssigned = 0;
+                unassignedNurses.forEach(nurse => {
+                    if (nightAssigned < reqN) {
+                        state.schedules[key][nurse.id][day] = 'N';
+                        nightAssigned++;
+                    }
+                });
+
+                // Step 4: Assign Evening (Only 3-Shift Nurses)
+                unassignedNurses = state.nurses.filter(n => !state.schedules[key][n.id][day]);
+                let eAssigned = 0;
+                unassignedNurses.forEach(nurse => {
+                    if (eAssigned < reqE && nurse.shiftType !== '2교대') {
+                        state.schedules[key][nurse.id][day] = 'E';
+                        eAssigned++;
+                    }
+                });
+
+                // Step 5: Assign Day
+                unassignedNurses = state.nurses.filter(n => !state.schedules[key][n.id][day]);
+                let dAssigned = 0;
+                unassignedNurses.forEach(nurse => {
+                    if (dAssigned < reqD) {
+                        state.schedules[key][nurse.id][day] = 'D';
+                        dAssigned++;
+                    }
+                });
+
+                // Step 6: Remaining get OFF
+                state.nurses.forEach(nurse => {
+                    if (!state.schedules[key][nurse.id][day]) {
+                        state.schedules[key][nurse.id][day] = 'OFF';
+                    }
+                });
+            }
+
+            saveStateToLocalStorage();
+            renderScheduleTable();
+            validateCurrentSchedule();
+        }
+
+        // ==================== NURSE MANAGEMENT ====================
+
+        function renderNurseList() {
+            const container = document.getElementById('nurseCardsContainer');
+            if (state.nurses.length === 0) {
+                container.innerHTML = `<div class="col-span-full text-center py-8 text-slate-400 text-xs">등록된 간호사가 없습니다.</div>`;
+                return;
+            }
+
+            container.innerHTML = state.nurses.map(nurse => `
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3 relative hover:border-sky-300 transition">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="flex items-center space-x-1.5 mb-1">
+                                <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold ${nurse.shiftType === '2교대' ? 'bg-purple-100 text-purple-800' : 'bg-sky-100 text-sky-800'}">${nurse.shiftType || '3교대'}</span>
+                                <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">${nurse.role}</span>
+                            </div>
+                            <h3 class="font-bold text-slate-800 text-sm">${nurse.name}</h3>
+                        </div>
+                        <div class="flex space-x-1">
+                            <button onclick="editNurse('${nurse.id}')" class="p-1 text-slate-400 hover:text-sky-600">
+                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                            </button>
+                            <button onclick="deleteNurse('${nurse.id}')" class="p-1 text-slate-400 hover:text-rose-600">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="text-xs text-slate-500 space-y-1 border-t border-slate-100 pt-2">
+                        <div class="flex justify-between">
+                            <span>월 최대 나이트:</span>
+                            <span class="font-bold text-slate-700">${nurse.maxNight}회</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>신청 휴일 (Off Request):</span>
+                            <span class="font-bold text-rose-700">${nurse.requestOffs && nurse.requestOffs.length > 0 ? nurse.requestOffs.join(', ') + '일' : '없음'}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            updateSwapDropdowns();
+        }
+
+        function openNurseModal(nurseId = null) {
+            document.getElementById('nurseForm').reset();
+            document.getElementById('nurseId').value = '';
+            document.getElementById('nurseModalTitle').innerText = '간호사 정보 등록';
+
+            if (nurseId) {
+                const nurse = state.nurses.find(n => n.id === nurseId);
+                if (nurse) {
+                    document.getElementById('nurseId').value = nurse.id;
+                    document.getElementById('nurseName').value = nurse.name;
+                    document.getElementById('nurseShiftType').value = nurse.shiftType || '3교대';
+                    document.getElementById('nurseRole').value = nurse.role;
+                    document.getElementById('nurseMaxNight').value = nurse.maxNight;
+                    document.getElementById('nurseModalTitle').innerText = '간호사 정보 수정';
+                }
+            }
+
+            openModal('nurseModal');
+        }
+
+        function saveNurse(e) {
+            e.preventDefault();
+            const id = document.getElementById('nurseId').value;
+            const name = document.getElementById('nurseName').value;
+            const shiftType = document.getElementById('nurseShiftType').value;
+            const role = document.getElementById('nurseRole').value;
+            const maxNight = parseInt(document.getElementById('nurseMaxNight').value) || 6;
+
+            if (id) {
+                const index = state.nurses.findIndex(n => n.id === id);
+                if (index !== -1) {
+                    state.nurses[index] = { ...state.nurses[index], name, shiftType, role, maxNight };
+                }
+            } else {
+                const newNurse = {
+                    id: 'nurse_' + Date.now(),
+                    name,
+                    shiftType,
+                    role,
+                    maxNight,
+                    requestOffs: []
+                };
+                state.nurses.push(newNurse);
+            }
+
+            saveStateToLocalStorage();
+            closeModal('nurseModal');
+            renderAll();
+        }
+
+        function editNurse(id) {
+            openNurseModal(id);
+        }
+
+        function deleteNurse(id) {
+            if (!confirm('해당 간호사를 삭제하시겠습니까?')) return;
+            state.nurses = state.nurses.filter(n => n.id !== id);
+            saveStateToLocalStorage();
+            renderAll();
+        }
+
+        // ==================== RULES & CONFIG SAVE ====================
+        function saveRulesSettings() {
+            state.rules.maxConsecutive = parseInt(document.getElementById('ruleMaxConsecutive').value);
+            state.rules.maxConsecutiveNight = parseInt(document.getElementById('ruleMaxConsecutiveNight').value);
+            state.rules.reqDay = parseInt(document.getElementById('reqDay').value);
+            state.rules.reqEvening = parseInt(document.getElementById('reqEvening').value);
+            state.rules.reqNight = parseInt(document.getElementById('reqNight').value);
+
+            saveStateToLocalStorage();
+            alert('근무 제약 및 규칙 설정이 저장되었습니다.');
+            renderScheduleTable();
+        }
+
+        // ==================== SHIFT SWAP BOARD ====================
+        function updateSwapDropdowns() {
+            const reqSel = document.getElementById('swapRequester');
+            const tarSel = document.getElementById('swapTarget');
+            if (!reqSel || !tarSel) return;
+
+            const optionsHTML = state.nurses.map(n => `<option value="${n.id}">${n.name} (${n.shiftType})</option>`).join('');
+            reqSel.innerHTML = optionsHTML;
+            tarSel.innerHTML = optionsHTML;
+        }
+
+        function submitSwapRequest(e) {
+            e.preventDefault();
+            const requesterId = document.getElementById('swapRequester').value;
+            const targetId = document.getElementById('swapTarget').value;
+            const day = parseInt(document.getElementById('swapDay').value);
+            const reason = document.getElementById('swapReason').value;
+
+            if (requesterId === targetId) {
+                alert('동일한 간호사끼리는 교환 신청을 할 수 없습니다.');
+                return;
+            }
+
+            const requester = state.nurses.find(n => n.id === requesterId);
+            const target = state.nurses.find(n => n.id === targetId);
+
+            const newReq = {
+                id: 'swap_' + Date.now(),
+                requesterName: requester.name,
+                targetName: target.name,
+                day,
+                reason,
+                status: '대기중',
+                dateStr: new Date().toLocaleDateString('ko-KR')
+            };
+
+            state.swapRequests.unshift(newReq);
+            saveStateToLocalStorage();
+            closeModal('swapModal');
+            renderSwapRequests();
+        }
+
+        function renderSwapRequests() {
+            const container = document.getElementById('swapListContainer');
+            const badge = document.getElementById('swapBadge');
+
+            const pending = state.swapRequests.filter(r => r.status === '대기중').length;
+            if (pending > 0) {
+                badge.innerText = pending;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+
+            if (!container) return;
+
+            if (state.swapRequests.length === 0) {
+                container.innerHTML = `<div class="p-8 text-center text-slate-400 text-xs">등록된 근무 교환 신청 내역이 없습니다.</div>`;
+                return;
+            }
+
+            container.innerHTML = state.swapRequests.map(req => `
+                <div class="p-4 flex items-center justify-between hover:bg-slate-50 transition">
+                    <div class="space-y-1">
+                        <div class="flex items-center space-x-2">
+                            <span class="font-bold text-slate-800 text-xs">${req.requesterName}</span>
+                            <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-400"></i>
+                            <span class="font-bold text-slate-800 text-xs">${req.targetName}</span>
+                            <span class="text-[10px] px-2 py-0.5 rounded bg-sky-100 text-sky-800 font-semibold">${req.day}일 근무 교환</span>
+                        </div>
+                        <p class="text-xs text-slate-500">${req.reason || '사유 미작성'}</p>
+                        <span class="text-[10px] text-slate-400">${req.dateStr} 신청</span>
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                        ${req.status === '대기중' ? `
+                            <button onclick="approveSwap('${req.id}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold">승인</button>
+                            <button onclick="rejectSwap('${req.id}')" class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold">거절</button>
+                        ` : `
+                            <span class="px-2.5 py-1 rounded-full text-xs font-bold ${req.status === '승인완료' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${req.status}</span>
+                        `}
+                    </div>
+                </div>
+            `).join('');
+
+            lucide.createIcons();
+        }
+
+        function approveSwap(id) {
+            const req = state.swapRequests.find(r => r.id === id);
+            if (req) {
+                req.status = '승인완료';
+                saveStateToLocalStorage();
+                renderSwapRequests();
+            }
+        }
+
+        function rejectSwap(id) {
+            const req = state.swapRequests.find(r => r.id === id);
+            if (req) {
+                req.status = '거절됨';
+                saveStateToLocalStorage();
+                renderSwapRequests();
+            }
+        }
+
+        // ==================== CSV EXPORT & MODALS ====================
+
+        function exportToCSV() {
+            const daysCount = getDaysInMonth(state.year, state.month);
+            const key = `${state.year}-${state.month}`;
+            const currentSchedule = state.schedules[key] || {};
+
+            let csvContent = "\uFEFF";
+            let headers = ["간호사명", "교대유형", "직책"];
+            for (let i = 1; i <= daysCount; i++) headers.push(`${i}일`);
+            csvContent += headers.join(",") + "\n";
+
+            state.nurses.forEach(nurse => {
+                let row = [`"${nurse.name}"`, `"${nurse.shiftType || '3교대'}"`, `"${nurse.role}"`];
+                for (let day = 1; day <= daysCount; day++) {
+                    const shift = (currentSchedule[nurse.id] && currentSchedule[nurse.id][day]) || 'OFF';
+                    row.push(`"${shift}"`);
+                }
+                csvContent += row.join(",") + "\n";
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `간호근무표_${state.year}년_${state.month}월.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('border-sky-600', 'text-sky-600');
+                btn.classList.add('border-transparent', 'text-slate-500');
+            });
+
+            document.getElementById(tabId).classList.remove('hidden');
+            const activeBtn = document.getElementById(`tab-${tabId}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('border-transparent', 'text-slate-500');
+                activeBtn.classList.add('border-sky-600', 'text-sky-600');
+            }
+        }
+    </script>
+</body>
+</html>
